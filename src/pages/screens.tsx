@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   Home,
   Compass,
@@ -13,6 +13,9 @@ import {
   Feather,
   BookOpen,
   Sparkles,
+  ArrowRight,
+  LogOut,
+  ChevronRight,
 } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { supabase } from "@/lib/supabase";
@@ -36,7 +39,7 @@ interface ScreenProps {
 }
 
 // ---- Home: real feed count from feed_index ----
-function HomeScreen() {
+function HomeScreen({ onNavigate }: ScreenProps) {
   const [count, setCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -71,6 +74,14 @@ function HomeScreen() {
             : count === 0
               ? "No stories have been published yet. Be the first to put something into the world — your feed will fill as writers share their work."
               : "Stories are being written. Follow writers to shape what appears here."
+        }
+        action={
+          !loading && (
+            <button onClick={() => onNavigate("discover")} className="ink-btn-primary group">
+              Explore Discover
+              <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
+            </button>
+          )
         }
       />
     </ScreenShell>
@@ -188,7 +199,7 @@ function SearchScreen() {
 }
 
 // ---- Library: real saved count ----
-function LibraryScreen() {
+function LibraryScreen({ onNavigate }: ScreenProps) {
   const { user } = useAuth();
   const [count, setCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -225,6 +236,14 @@ function LibraryScreen() {
             : count === 0
               ? "Stories, poems, and books you save will be kept here for later reading. Tap the bookmark on any piece to add it."
               : `You've saved ${count} piece${count === 1 ? "" : "s"}. Full library browsing arrives in a later phase.`
+        }
+        action={
+          !loading && count === 0 && (
+            <button onClick={() => onNavigate("discover")} className="ink-btn-primary group">
+              Browse Discover to find something to save
+              <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
+            </button>
+          )
         }
       />
     </ScreenShell>
@@ -333,12 +352,14 @@ function NotificationsScreen() {
   );
 }
 
-// ---- Settings ----
-function SettingsScreen() {
-  const { profile } = useAuth();
+// ---- Settings (with logout) ----
+function SettingsScreen({ onNavigate }: ScreenProps) {
+  const { profile, signOut } = useAuth();
+  const [signingOut, setSigningOut] = useState(false);
+
   return (
     <ScreenShell title="Settings">
-      <div className="px-6 pt-6">
+      <div className="px-6 pt-6 space-y-4">
         <div className="ink-card p-6">
           <h3 className="text-lg" style={{ color: "var(--text)" }}>
             Profile
@@ -368,7 +389,19 @@ function SettingsScreen() {
             </div>
           </dl>
         </div>
+
+        <button
+          onClick={() => onNavigate("profile")}
+          className="ink-card flex w-full items-center justify-between p-5 transition-colors hover:bg-[var(--bg-elevated)]"
+        >
+          <span className="flex items-center gap-3 text-sm" style={{ color: "var(--text)" }}>
+            <Feather size={18} strokeWidth={1.5} style={{ color: "var(--accent)" }} />
+            View your profile
+          </span>
+          <ChevronRight size={18} style={{ color: "var(--text-faint)" }} />
+        </button>
       </div>
+
       <div className="mt-6">
         <EmptyState
           icon={SettingsIcon}
@@ -376,17 +409,34 @@ function SettingsScreen() {
           description="Account, privacy, and notification preferences will be fully editable here in a later phase."
         />
       </div>
+
+      {/* Logout */}
+      <div className="px-6 pb-12 pt-4">
+        <button
+          onClick={async () => {
+            setSigningOut(true);
+            await signOut();
+          }}
+          disabled={signingOut}
+          className="ink-btn-ghost w-full sm:w-auto"
+          style={{ color: "var(--error, #c0392b)" }}
+        >
+          <LogOut size={16} />
+          {signingOut ? "Logging out..." : "Log out"}
+        </button>
+      </div>
     </ScreenShell>
   );
 }
 
 // ---- Profile: real counts from the database ----
-function ProfileScreen() {
-  const { user, profile, isWriter, isFounder } = useAuth();
+function ProfileScreen({ onNavigate }: ScreenProps) {
+  const { user, profile, isWriter, isFounder, signOut } = useAuth();
   const [postCount, setPostCount] = useState<number | null>(null);
   const [followerCount, setFollowerCount] = useState<number | null>(null);
   const [followingCount, setFollowingCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     if (!user || !supabase) {
@@ -416,47 +466,121 @@ function ProfileScreen() {
   }, [user]);
 
   const roleLabel = isFounder ? "Founder" : isWriter ? "Writer" : "Reader";
+  const monogram = (profile?.display_name ?? profile?.email ?? "?").charAt(0).toUpperCase();
 
   return (
     <ScreenShell title="Profile">
       <div className="px-6 pt-6">
         <div className="ink-card overflow-hidden">
-          <div className="h-24" style={{ background: "linear-gradient(135deg, var(--accent) 0%, var(--bg-elevated) 100%)", opacity: 0.5 }} />
-          <div className="px-6 pb-6">
+          {/* Banner — warm gradient with subtle texture */}
+          <div
+            className="relative h-28 overflow-hidden"
+            style={{
+              background:
+                "linear-gradient(120deg, color-mix(in srgb, var(--accent) 45%, var(--bg-elevated)) 0%, var(--bg-elevated) 100%)",
+            }}
+          >
             <div
-              className="-mt-10 mb-4 inline-flex h-20 w-20 items-center justify-center rounded-full text-2xl"
-              style={{ border: "3px solid var(--surface)", backgroundColor: "var(--bg-elevated)", color: "var(--accent)" }}
+              className="absolute inset-0 opacity-30"
+              style={{
+                background:
+                  "radial-gradient(circle at 20% 80%, var(--accent) 0%, transparent 50%), radial-gradient(circle at 80% 20%, var(--accent) 0%, transparent 40%)",
+              }}
+            />
+          </div>
+
+          <div className="px-6 pb-6">
+            {/* Monogram avatar */}
+            <div
+              className="-mt-12 mb-4 inline-flex h-24 w-24 items-center justify-center rounded-full text-3xl"
+              style={{
+                border: "4px solid var(--surface)",
+                background:
+                  "linear-gradient(135deg, color-mix(in srgb, var(--accent) 80%, var(--bg-elevated)), var(--accent))",
+                color: "var(--bg)",
+                fontFamily: '"Cormorant Garamond", serif',
+                fontWeight: 600,
+                boxShadow: "0 8px 24px -8px color-mix(in srgb, var(--accent) 50%, transparent)",
+              }}
             >
-              {(profile?.display_name ?? profile?.email ?? "?").charAt(0).toUpperCase()}
+              {monogram}
             </div>
-            <h2 className="text-2xl" style={{ color: "var(--text)" }}>
+
+            <h2
+              className="text-2xl"
+              style={{ color: "var(--text)", fontFamily: '"Cormorant Garamond", serif' }}
+            >
               {profile?.display_name ?? "Unnamed writer"}
             </h2>
             <p className="text-sm" style={{ color: "var(--text-faint)" }}>
               {profile?.email}
             </p>
-            <div className="mt-2">
+
+            {/* Role badge pill */}
+            <div className="mt-3">
               <span
-                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium"
-                style={{ backgroundColor: "color-mix(in srgb, var(--accent) 14%, transparent)", color: "var(--accent)" }}
+                className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1 text-xs font-semibold tracking-wide"
+                style={{
+                  backgroundColor: "color-mix(in srgb, var(--accent) 16%, transparent)",
+                  color: "var(--accent)",
+                  border: "1px solid color-mix(in srgb, var(--accent) 40%, transparent)",
+                  boxShadow: "0 0 16px -4px color-mix(in srgb, var(--accent) 30%, transparent)",
+                }}
               >
                 {isFounder && <Sparkles size={12} />}
                 {roleLabel}
               </span>
             </div>
+
             {profile?.bio && (
               <p className="mt-4 text-sm text-pretty" style={{ color: "var(--text-muted)" }}>
                 {profile.bio}
               </p>
             )}
-            <div className="mt-6 grid grid-cols-3 gap-4 border-t pt-6" style={{ borderColor: "var(--border)" }}>
-              <Stat label="Published" value={loading ? "—" : postCount} />
-              <Stat label="Followers" value={loading ? "—" : followerCount} />
-              <Stat label="Following" value={loading ? "—" : followingCount} />
+
+            {/* Stat row — designed with dividers + serif numerals */}
+            <div
+              className="mt-6 grid grid-cols-3 overflow-hidden rounded-xl"
+              style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-elevated)" }}
+            >
+              <Stat label="Published" value={loading ? null : postCount} />
+              <Stat label="Followers" value={loading ? null : followerCount} divider />
+              <Stat label="Following" value={loading ? null : followingCount} divider />
             </div>
           </div>
         </div>
+
+        {/* Settings + Logout entry points */}
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <button
+            onClick={() => onNavigate("settings")}
+            className="ink-card flex items-center justify-between p-4 transition-colors hover:bg-[var(--bg-elevated)]"
+          >
+            <span className="flex items-center gap-3 text-sm font-medium" style={{ color: "var(--text)" }}>
+              <SettingsIcon size={18} strokeWidth={1.5} style={{ color: "var(--accent)" }} />
+              Settings
+            </span>
+            <ChevronRight size={18} style={{ color: "var(--text-faint)" }} />
+          </button>
+          <button
+            onClick={async () => {
+              setSigningOut(true);
+              await signOut();
+            }}
+            disabled={signingOut}
+            className="ink-card flex items-center justify-between p-4 transition-colors hover:bg-[var(--bg-elevated)]"
+            style={{ color: "var(--error, #c0392b)" }}
+          >
+            <span className="flex items-center gap-3 text-sm font-medium">
+              <LogOut size={18} strokeWidth={1.5} />
+              {signingOut ? "Logging out..." : "Log out"}
+            </span>
+            <ChevronRight size={18} style={{ color: "var(--text-faint)" }} />
+          </button>
+        </div>
       </div>
+
+      {/* Empty published-work state with CTA */}
       <div className="mt-8">
         <EmptyState
           icon={BookOpen}
@@ -466,26 +590,48 @@ function ProfileScreen() {
               ? "When you publish your first piece, it will appear here — and your role will become Writer automatically."
               : "A dedicated profile feed arrives in a later phase."
           }
+          action={
+            postCount === 0 && (
+              <button onClick={() => onNavigate("studio")} className="ink-btn-primary group">
+                Start your first piece
+                <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
+              </button>
+            )
+          }
         />
       </div>
     </ScreenShell>
   );
 }
 
-function Stat({ label, value }: { label: string; value: number | string | null }) {
+function Stat({
+  label,
+  value,
+  divider,
+}: {
+  label: string;
+  value: number | string | null;
+  divider?: boolean;
+}) {
   return (
-    <div className="text-center">
-      <div className="text-xl" style={{ color: "var(--text)", fontFamily: '"Cormorant Garamond", serif' }}>
-        {value}
+    <div
+      className="flex flex-col items-center py-5 text-center"
+      style={divider ? { borderLeft: "1px solid var(--border)" } : undefined}
+    >
+      <div
+        className="text-2xl"
+        style={{ color: "var(--text)", fontFamily: '"Cormorant Garamond", serif', fontWeight: 600 }}
+      >
+        {value === null ? "—" : value}
       </div>
-      <div className="text-xs" style={{ color: "var(--text-faint)" }}>
+      <div className="mt-1 text-xs tracking-wide" style={{ color: "var(--text-faint)" }}>
         {label}
       </div>
     </div>
   );
 }
 
-function ScreenShell({ title, children }: { title: string; children: React.ReactNode }) {
+function ScreenShell({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="animate-fade-in">
       <div className="px-6 pt-6">
@@ -504,13 +650,13 @@ function ScreenShell({ title, children }: { title: string; children: React.React
 export function ScreenRouter({ screen, onNavigate }: { screen: ScreenId; onNavigate: (id: ScreenId) => void }) {
   switch (screen) {
     case "home":
-      return <HomeScreen />;
+      return <HomeScreen onNavigate={onNavigate} />;
     case "discover":
       return <DiscoverScreen />;
     case "search":
       return <SearchScreen />;
     case "library":
-      return <LibraryScreen />;
+      return <LibraryScreen onNavigate={onNavigate} />;
     case "communities":
       return <CommunitiesScreen />;
     case "messages":
@@ -522,13 +668,12 @@ export function ScreenRouter({ screen, onNavigate }: { screen: ScreenId; onNavig
     case "notifications":
       return <NotificationsScreen />;
     case "settings":
-      return <SettingsScreen />;
+      return <SettingsScreen onNavigate={onNavigate} />;
     case "profile":
-      return <ProfileScreen />;
+      return <ProfileScreen onNavigate={onNavigate} />;
     default:
-      return <HomeScreen />;
+      return <HomeScreen onNavigate={onNavigate} />;
   }
 }
 
 export type { ScreenId };
-export { Feather };
