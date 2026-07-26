@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
-import { supabase } from "@/lib/supabase";
+import { supabase, hasSupabaseConfig } from "@/lib/supabase";
 import type { Profile, ResolvedRoles, UserRole } from "@/types/database";
 
 interface AuthContextValue {
@@ -20,6 +20,7 @@ interface AuthContextValue {
   isWriter: boolean;
   loading: boolean;
   resolving: boolean;
+  configured: boolean;
   signUp: (email: string, password: string) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
@@ -70,6 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const fetchProfile = useCallback(async (userId: string) => {
+    if (!supabase) return;
     const { data, error } = await supabase
       .from("profiles")
       .select("*")
@@ -82,18 +84,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Initialise session once and subscribe to auth changes.
   useEffect(() => {
+    // No client (missing env vars): drop straight out of loading so the app
+    // can render its error state instead of hanging on the spinner forever.
+    if (!supabase) {
+      setLoading(false);
+      return;
+    }
+
     let mounted = true;
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
-      setSession(data.session);
-      setUser(data.session?.user ?? null);
-      if (data.session?.user) {
-        fetchProfile(data.session.user.id);
-        callResolveRoles(data.session);
-      }
-      setLoading(false);
-    });
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (!mounted) return;
+        setSession(data.session);
+        setUser(data.session?.user ?? null);
+        if (data.session?.user) {
+          fetchProfile(data.session.user.id);
+          callResolveRoles(data.session);
+        }
+        setLoading(false);
+      })
+      .catch(() => {
+        // getSession should never reject, but if storage is inaccessible in
+        // this environment we still must release the loading state.
+        if (mounted) setLoading(false);
+      });
 
     // onAuthStateChange callback runs synchronously; wrap async work to avoid deadlock.
     const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
@@ -119,16 +135,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [callResolveRoles, fetchProfile]);
 
   const signUp = useCallback(async (email: string, password: string) => {
+    if (!supabase) return { error: "Authentication is not configured." };
     const { error } = await supabase.auth.signUp({ email, password });
     return { error: error ? error.message : null };
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
+    if (!supabase) return { error: "Authentication is not configured." };
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return { error: error ? error.message : null };
   }, []);
 
   const signOut = useCallback(async () => {
+    if (!supabase) return;
     await supabase.auth.signOut();
     setProfile(null);
     setRole(null);
@@ -137,6 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const resetPassword = useCallback(async (email: string) => {
+    if (!supabase) return { error: "Authentication is not configured." };
     const { error } = await supabase.auth.resetPasswordForEmail(email);
     return { error: error ? error.message : null };
   }, []);
@@ -155,6 +175,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isWriter,
       loading,
       resolving,
+      configured: hasSupabaseConfig,
       signUp,
       signIn,
       signOut,

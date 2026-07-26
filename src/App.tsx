@@ -9,8 +9,34 @@ import { Feather } from "lucide-react";
 type View = "landing" | "signup" | "signin" | "app";
 
 function AppRoutes() {
-  const { session, loading } = useAuth();
+  const { session, loading, configured } = useAuth();
   const [view, setView] = useState<View>("landing");
+
+  if (!configured) {
+    return (
+      <div
+        className="flex min-h-screen flex-col items-center justify-center px-6 text-center"
+        style={{ backgroundColor: "var(--bg)" }}
+      >
+        <div
+          className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl"
+          style={{ border: "1px solid var(--border)", color: "var(--accent)" }}
+        >
+          <Feather size={26} strokeWidth={1.5} />
+        </div>
+        <h1
+          className="ink-logotype text-2xl"
+          style={{ color: "var(--text)" }}
+        >
+          INKREAL
+        </h1>
+        <p className="mt-4 max-w-sm text-sm" style={{ color: "var(--text-muted)" }}>
+          The app couldn't connect to its database. Please check the connection
+          settings and reload.
+        </p>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

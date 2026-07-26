@@ -41,13 +41,23 @@ function HomeScreen() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase
-      .from("feed_index")
-      .select("id", { count: "exact", head: true })
-      .then(({ count }) => {
+    if (!supabase) {
+      setLoading(false);
+      setCount(0);
+      return;
+    }
+    (async () => {
+      try {
+        const { count } = await supabase
+          .from("feed_index")
+          .select("id", { count: "exact", head: true });
         setCount(count ?? 0);
+      } catch {
+        setCount(0);
+      } finally {
         setLoading(false);
-      });
+      }
+    })();
   }, []);
 
   return (
@@ -73,13 +83,23 @@ function DiscoverScreen() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase
-      .from("feed_index")
-      .select("id", { count: "exact", head: true })
-      .then(({ count }) => {
+    if (!supabase) {
+      setLoading(false);
+      setCount(0);
+      return;
+    }
+    (async () => {
+      try {
+        const { count } = await supabase
+          .from("feed_index")
+          .select("id", { count: "exact", head: true });
         setCount(count ?? 0);
+      } catch {
+        setCount(0);
+      } finally {
         setLoading(false);
-      });
+      }
+    })();
   }, []);
 
   return (
@@ -111,11 +131,20 @@ function SearchScreen() {
       return;
     }
     setSearching(true);
-    const { count } = await supabase
-      .from("profiles")
-      .select("id", { count: "exact", head: true })
-      .ilike("display_name", `%${q}%`);
-    setResults(count ?? 0);
+    if (!supabase) {
+      setResults(0);
+      setSearching(false);
+      return;
+    }
+    try {
+      const { count } = await supabase
+        .from("profiles")
+        .select("id", { count: "exact", head: true })
+        .ilike("display_name", `%${q}%`);
+      setResults(count ?? 0);
+    } catch {
+      setResults(0);
+    }
     setSearching(false);
   }
 
@@ -165,18 +194,24 @@ function LibraryScreen() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) {
+    if (!user || !supabase) {
       setLoading(false);
+      setCount(0);
       return;
     }
-    supabase
-      .from("saves")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .then(({ count }) => {
+    (async () => {
+      try {
+        const { count } = await supabase
+          .from("saves")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", user.id);
         setCount(count ?? 0);
+      } catch {
+        setCount(0);
+      } finally {
         setLoading(false);
-      });
+      }
+    })();
   }, [user]);
 
   return (
@@ -260,19 +295,25 @@ function NotificationsScreen() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) {
+    if (!user || !supabase) {
       setLoading(false);
+      setCount(0);
       return;
     }
-    supabase
-      .from("notifications")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .eq("read", false)
-      .then(({ count }) => {
+    (async () => {
+      try {
+        const { count } = await supabase
+          .from("notifications")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .eq("read", false);
         setCount(count ?? 0);
+      } catch {
+        setCount(0);
+      } finally {
         setLoading(false);
-      });
+      }
+    })();
   }, [user]);
 
   return (
@@ -348,20 +389,30 @@ function ProfileScreen() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) {
+    if (!user || !supabase) {
       setLoading(false);
+      setPostCount(0);
+      setFollowerCount(0);
+      setFollowingCount(0);
       return;
     }
     Promise.all([
       supabase.from("feed_index").select("id", { count: "exact", head: true }).eq("creator_id", user.id),
       supabase.from("follows").select("id", { count: "exact", head: true }).eq("following_id", user.id),
       supabase.from("follows").select("id", { count: "exact", head: true }).eq("follower_id", user.id),
-    ]).then(([posts, followers, following]) => {
-      setPostCount(posts.count ?? 0);
-      setFollowerCount(followers.count ?? 0);
-      setFollowingCount(following.count ?? 0);
-      setLoading(false);
-    });
+    ])
+      .then(([posts, followers, following]) => {
+        setPostCount(posts.count ?? 0);
+        setFollowerCount(followers.count ?? 0);
+        setFollowingCount(following.count ?? 0);
+        setLoading(false);
+      })
+      .catch(() => {
+        setPostCount(0);
+        setFollowerCount(0);
+        setFollowingCount(0);
+        setLoading(false);
+      });
   }, [user]);
 
   const roleLabel = isFounder ? "Founder" : isWriter ? "Writer" : "Reader";
