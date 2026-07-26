@@ -173,4 +173,54 @@
 
   .text-balance { text-wrap: balance; }
   .text-pretty { text-wrap: pretty; }
+
+  /* Ink-bleed letter reveal */
+  .ink-letter {
+    animation: ink-bleed 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  @keyframes ink-bleed {
+    0% {
+      opacity: 0;
+      filter: blur(4px);
+      transform: translateY(0.04em);
+    }
+    60% {
+      filter: blur(1px);
+    }
+    100% {
+      opacity: 1;
+      filter: blur(0);
+      transform: translateY(0);
+    }
+  }
+
+  /* Volume slider */
+  .ink-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    border-radius: 9999px;
+    background: var(--border);
+    outline: none;
+    cursor: pointer;
+  }
+  .ink-slider:disabled { cursor: not-allowed; opacity: 0.4; }
+  .ink-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: none;
+    transition: transform 0.15s ease;
+  }
+  .ink-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+  .ink-slider::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: none;
+  }
 }

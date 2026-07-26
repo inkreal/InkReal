@@ -1,7 +1,11 @@
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   Feather,
+  MapPin,
+  Clock,
+  DollarSign,
+  Leaf,
   PenLine,
   BookOpen,
   Users,
@@ -11,12 +15,13 @@ import {
   Globe,
   Sparkles,
   Mic,
-  MapPin,
-  Clock,
-  DollarSign,
-  Leaf,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { useAmbientAudio } from "@/hooks/useAmbientAudio";
+import { getEnvironmentContext, type ParticleKind } from "@/lib/livingEnvironment";
+import { AtmosphereControl } from "@/components/AtmosphereControl";
+import { EnvironmentParticles } from "@/components/EnvironmentParticles";
+import { InkBleedWord, InkQuote } from "@/components/InkTypography";
 
 interface LandingPageProps {
   onNavigate: (route: "signup" | "signin") => void;
@@ -33,73 +38,78 @@ const MOODS = [
   "Classical",
   "Lo-fi",
   "Focus",
-];
+] as const;
+
+const MOOD_ID_MAP: Record<(typeof MOODS)[number], string> = {
+  Silence: "silence",
+  Rain: "rain",
+  Ocean: "ocean",
+  Forest: "forest",
+  Fireplace: "fireplace",
+  "Coffee Shop": "coffee",
+  "Night Writing": "night",
+  Classical: "classical",
+  "Lo-fi": "lofi",
+  Focus: "focus",
+};
 
 const FEATURES = [
   {
     icon: PenLine,
-    title: "Writing Studio",
-    desc: "A focused space to draft, edit, and perfect your craft with auto-save.",
+    title: "The Writing Room",
+    desc: "A quiet, focused space to draft and shape your work — auto-saved as you go.",
   },
   {
     icon: BookOpen,
-    title: "Publish & Sell",
-    desc: "Publish books globally and earn in your local currency.",
+    title: "The Bookshop",
+    desc: "Publish your pages to the world and earn in your local currency.",
   },
   {
     icon: Users,
-    title: "Communities",
-    desc: "Join circles of writers, poets, and storytellers who inspire.",
+    title: "The Salon",
+    desc: "Gatherings of writers, poets, and storytellers who keep each other going.",
   },
   {
     icon: Headphones,
-    title: "Audio Stories",
-    desc: "Listen to narrated works or narrate your own for the world.",
+    title: "The Reading Chair",
+    desc: "Listen to narrated works, or lend your voice to narrate your own.",
   },
   {
     icon: ShoppingBag,
-    title: "Marketplace",
-    desc: "Buy, rent, or subscribe to books, courses, and exclusive content.",
+    title: "The Marketplace",
+    desc: "Books, courses, and exclusive pieces — bought, rented, or subscribed.",
   },
   {
     icon: BarChart2,
-    title: "Creator Analytics",
-    desc: "Track your readers, revenue, and reach across the globe.",
+    title: "The Reading Room Mirror",
+    desc: "See your readers, your reach, and your earnings in honest detail.",
   },
   {
     icon: Globe,
-    title: "Literary Map",
-    desc: "Discover creators and stories from every corner of the world.",
+    title: "The Literary Map",
+    desc: "Discover writers and stories from every corner of the world.",
   },
   {
     icon: Sparkles,
-    title: "Living Environment",
-    desc: "Seasonal animations and ambient sound that match your world.",
+    title: "The Living World",
+    desc: "Seasonal light and ambient sound that shift with the world outside.",
   },
   {
     icon: Mic,
-    title: "Poetry & Spoken Word",
-    desc: "Share poems, spoken word, and verses that move people.",
+    title: "The Open Mic",
+    desc: "A stage for poems, spoken word, and verses meant to be heard.",
   },
 ];
 
 const PULSE_ITEMS = [
   "A writer just published a poem.",
-  "A reader just finished a chapter.",
-  "A writer just reached 10,000 readers.",
-  "An audiobook hit #1 today.",
-  "A new community was born.",
-  "Someone just earned their first dollar.",
+  "A reader just turned the last page.",
   "A poet shared their first verse.",
+  "An audiobook reached a thousand listeners.",
+  "A new circle of writers formed.",
+  "Someone earned their first dollar from a story.",
+  "A midnight chapter was just finished.",
 ];
-
-function getSeason(): string {
-  const m = new Date().getMonth();
-  if (m >= 2 && m <= 4) return "Spring";
-  if (m >= 5 && m <= 7) return "Summer";
-  if (m >= 8 && m <= 10) return "Autumn";
-  return "Winter";
-}
 
 function getTimeLabel(): string {
   const h = new Date().getHours();
@@ -111,56 +121,38 @@ function getTimeLabel(): string {
   return "Burning the midnight oil";
 }
 
-function getGreeting(): string {
-  const h = new Date().getHours();
-  if (h < 12) return "GOOD MORNING";
-  if (h < 17) return "GOOD AFTERNOON";
-  if (h < 21) return "GOOD EVENING";
-  return "GOOD NIGHT";
-}
-
 function getCurrentTime(): string {
   return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 function LivePulseTicker() {
-  const tickerRef = useRef<HTMLDivElement>(null);
   const repeated = [...PULSE_ITEMS, ...PULSE_ITEMS, ...PULSE_ITEMS];
-
   return (
     <div
-      className="relative overflow-hidden border-b"
-      style={{
-        borderColor: "var(--border)",
-        backgroundColor: "var(--surface)",
-      }}
+      className="relative z-10 overflow-hidden border-y"
+      style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)" }}
     >
       <div className="flex items-center">
         <div
           className="flex-shrink-0 px-4 py-2.5 text-xs font-semibold tracking-widest"
-          style={{
-            backgroundColor: "var(--accent)",
-            color: "#000",
-          }}
+          style={{ backgroundColor: "var(--accent)", color: "#000" }}
         >
           LIVE PULSE
         </div>
-        <div className="overflow-hidden flex-1 relative">
-          <div
-            ref={tickerRef}
-            className="flex gap-8 animate-ticker whitespace-nowrap"
-          >
+        <div className="relative flex-1 overflow-hidden">
+          <div className="flex animate-ticker gap-8 whitespace-nowrap">
             {repeated.map((item, i) => (
               <span
                 key={i}
-                className="inline-flex items-center gap-2 text-xs py-2.5 px-1 flex-shrink-0"
+                className="inline-flex flex-shrink-0 items-center gap-2 px-1 py-2.5 text-xs"
                 style={{ color: "var(--text-muted)" }}
               >
                 <span
-                  className="inline-block h-1.5 w-1.5 rounded-full flex-shrink-0"
+                  className="inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full"
                   style={{ backgroundColor: "var(--accent)" }}
                 />
                 {item}
+                <span style={{ color: "var(--border)" }}>·</span>
               </span>
             ))}
           </div>
@@ -172,8 +164,11 @@ function LivePulseTicker() {
 
 export function LandingPage({ onNavigate }: LandingPageProps) {
   const { session } = useAuth();
-  const [activeMood, setActiveMood] = useState("Silence");
+  const { activeMood, selectMood, volume, setVolume, muted, setMuted } = useAmbientAudio();
   const [currentTime, setCurrentTime] = useState(getCurrentTime);
+
+  const env = useMemo(() => getEnvironmentContext(), []);
+  const particleKind: ParticleKind = env.particleKind;
 
   useEffect(() => {
     const id = setInterval(() => setCurrentTime(getCurrentTime()), 30000);
@@ -181,27 +176,43 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
   }, []);
 
   const timeLabel = useMemo(() => getTimeLabel(), []);
-  const season = useMemo(() => getSeason(), []);
-  const greeting = useMemo(() => getGreeting(), []);
+  const seasonLabel = env.season.charAt(0).toUpperCase() + env.season.slice(1);
 
   return (
     <div className="relative min-h-screen" style={{ backgroundColor: "var(--bg)" }}>
+      {/* Environmental tint layer */}
+      <div
+        className="pointer-events-none fixed inset-0 z-0 transition-opacity duration-[2000ms]"
+        style={{
+          backgroundColor: env.tint,
+          opacity: env.tintOpacity,
+          mixBlendMode: "soft-light",
+        }}
+        aria-hidden="true"
+      />
+
+      {/* Seasonal / night particles */}
+      <EnvironmentParticles kind={particleKind} />
+
       {/* Ambient orbs */}
-      <div className="pointer-events-none fixed inset-0 overflow-hidden">
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
         <div
-          className="absolute -top-32 -left-24 h-[40rem] w-[40rem] rounded-full opacity-[0.12] blur-3xl animate-ambient-drift"
+          className="absolute -left-24 -top-32 h-[40rem] w-[40rem] rounded-full opacity-[0.12] blur-3xl animate-ambient-drift"
           style={{ background: "radial-gradient(circle, var(--accent) 0%, transparent 70%)" }}
         />
         <div
-          className="absolute top-1/2 -right-32 h-[36rem] w-[36rem] rounded-full opacity-[0.07] blur-3xl animate-ambient-drift"
-          style={{ background: "radial-gradient(circle, var(--accent) 0%, transparent 70%)", animationDelay: "6s" }}
+          className="absolute -right-32 top-1/2 h-[36rem] w-[36rem] rounded-full opacity-[0.07] blur-3xl animate-ambient-drift"
+          style={{
+            background: "radial-gradient(circle, var(--accent) 0%, transparent 70%)",
+            animationDelay: "6s",
+          }}
         />
       </div>
 
       {/* Navbar */}
       <header
-        className="relative z-20 flex items-center justify-between px-6 py-4 sm:px-10 border-b"
-        style={{ borderColor: "var(--border)" }}
+        className="relative z-20 flex items-center justify-between px-6 py-4 sm:px-10"
+        style={{ borderBottom: "1px solid var(--border)" }}
       >
         <div
           className="ink-logotype text-lg tracking-[0.2em]"
@@ -209,7 +220,7 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
         >
           InkReal
         </div>
-        <nav className="hidden sm:flex items-center gap-8">
+        <nav className="hidden items-center gap-8 sm:flex">
           {["Features", "Docs", "Discover"].map((item) => (
             <button
               key={item}
@@ -225,14 +236,14 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
         <div className="flex items-center gap-3">
           <button
             onClick={() => onNavigate("signin")}
-            className="text-sm px-4 py-1.5 rounded-lg transition-colors"
+            className="rounded-lg px-4 py-1.5 text-sm transition-colors"
             style={{ color: "var(--text-muted)" }}
           >
             Sign In
           </button>
           <button
             onClick={() => onNavigate("signup")}
-            className="ink-btn-primary text-sm py-2 px-5"
+            className="ink-btn-primary px-5 py-2 text-sm"
           >
             Get Started
           </button>
@@ -240,7 +251,7 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
       </header>
 
       {/* Hero */}
-      <section className="relative z-10 mx-auto max-w-3xl flex flex-col items-center text-center px-6 pt-20 pb-10 sm:pt-28">
+      <section className="relative z-10 mx-auto flex max-w-3xl flex-col items-center px-6 pt-20 pb-10 text-center sm:pt-28">
         {/* Context bar */}
         <div
           className="mb-10 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs animate-fade-in"
@@ -264,21 +275,21 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
           </span>
           <span className="flex items-center gap-1.5">
             <Leaf size={12} strokeWidth={1.5} />
-            {season}
+            {seasonLabel}
           </span>
         </div>
 
         {/* Greeting label */}
         <p
-          className="mb-3 text-xs font-semibold tracking-widest animate-fade-up opacity-0"
+          className="mb-3 text-xs font-semibold tracking-widest opacity-0 animate-fade-up"
           style={{ color: "var(--accent)", animationDelay: "0.1s" }}
         >
-          {greeting}
+          {env.greeting}
         </p>
 
-        {/* Main headline */}
+        {/* Main headline — ink-bleed on "stories" */}
         <h1
-          className="animate-fade-up opacity-0 text-balance"
+          className="opacity-0 animate-fade-up text-balance"
           style={{
             color: "var(--text)",
             fontFamily: '"Cormorant Garamond", serif',
@@ -288,14 +299,12 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
             animationDelay: "0.2s",
           }}
         >
-          Where{" "}
-          <em style={{ fontStyle: "italic", color: "var(--text)" }}>stories</em>{" "}
-          breathe.
+          Where <InkBleedWord text="stories" delay={700} /> breathe.
         </h1>
 
-        {/* Sub-headline */}
+        {/* Atmospheric subheading */}
         <p
-          className="mt-5 max-w-xl animate-fade-up opacity-0 text-pretty"
+          className="mt-5 max-w-xl animate-fade-up text-pretty opacity-0"
           style={{
             color: "var(--text-muted)",
             fontSize: "clamp(0.95rem, 2.5vw, 1.1rem)",
@@ -303,30 +312,19 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
             animationDelay: "0.3s",
           }}
         >
-          InkReal is a living network for readers, writers, and creators — publish, read,
-          listen, and connect across regions and currencies.
+          Pull up a chair in the quiet hours. InkReal is a place to write by candlelight,
+          to read beneath the sound of rain, and to find the others who keep watch
+          over the midnight page.
         </p>
 
-        {/* Founder quote */}
-        <blockquote
-          className="mt-8 max-w-lg animate-fade-up opacity-0"
-          style={{
-            fontFamily: '"Cormorant Garamond", serif',
-            fontStyle: "italic",
-            fontSize: "clamp(1.05rem, 2.5vw, 1.25rem)",
-            lineHeight: 1.6,
-            color: "var(--text-muted)",
-            animationDelay: "0.4s",
-          }}
-        >
-          &ldquo;The sky is not the limit. You limit yourself to the sky.&rdquo;
-          <footer
-            className="mt-2 not-italic text-xs tracking-widest"
-            style={{ color: "var(--text-faint)" }}
-          >
-            &mdash; Jaydin Donough, Founder of InkReal
-          </footer>
-        </blockquote>
+        {/* Founder quote — ink-bleed fade */}
+        <div className="mt-8 max-w-lg animate-fade-up opacity-0" style={{ animationDelay: "0.4s" }}>
+          <InkQuote
+            quote="The sky is not the limit. You limit yourself to the sky."
+            author="Jaydin Donough, Founder of InkReal"
+            delay={1200}
+          />
+        </div>
 
         {/* CTAs */}
         <div
@@ -352,38 +350,52 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
         </div>
       </section>
 
-      {/* Set the Mood */}
+      {/* Set the Mood — wired to real ambient audio */}
       <section className="relative z-10 mx-auto max-w-3xl px-6 py-12 text-center">
         <p
-          className="mb-6 text-xs font-semibold tracking-widest"
+          className="mb-3 text-xs font-semibold tracking-widest"
           style={{ color: "var(--accent)" }}
         >
           SET THE MOOD
         </p>
+        <p className="mb-6 text-sm" style={{ color: "var(--text-muted)" }}>
+          Choose a sound. Let the room settle around you.
+        </p>
         <div className="flex flex-wrap justify-center gap-3">
-          {MOODS.map((mood) => (
-            <button
-              key={mood}
-              onClick={() => setActiveMood(mood)}
-              className="rounded-full px-4 py-2 text-sm transition-all"
-              style={
-                activeMood === mood
-                  ? {
-                      backgroundColor: "var(--accent)",
-                      color: "#000",
-                      border: "1px solid var(--accent)",
-                    }
-                  : {
-                      backgroundColor: "transparent",
-                      color: "var(--text-muted)",
-                      border: "1px solid var(--border)",
-                    }
-              }
-            >
-              {mood}
-            </button>
-          ))}
+          {MOODS.map((mood) => {
+            const id = MOOD_ID_MAP[mood];
+            const active = activeMood === id;
+            return (
+              <button
+                key={mood}
+                onClick={() => selectMood(id as never)}
+                className="rounded-full px-4 py-2 text-sm transition-all"
+                style={
+                  active
+                    ? {
+                        backgroundColor: "var(--accent)",
+                        color: "#000",
+                        border: "1px solid var(--accent)",
+                      }
+                    : {
+                        backgroundColor: "transparent",
+                        color: "var(--text-muted)",
+                        border: "1px solid var(--border)",
+                      }
+                }
+              >
+                {mood}
+              </button>
+            );
+          })}
         </div>
+        <AtmosphereControl
+          volume={volume}
+          muted={muted}
+          onVolumeChange={setVolume}
+          onToggleMute={() => setMuted(!muted)}
+          activeMood={activeMood}
+        />
       </section>
 
       {/* Live Pulse */}
@@ -391,7 +403,7 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
 
       {/* Feature cards */}
       <section className="relative z-10 mx-auto max-w-3xl px-6 py-16">
-        <div className="text-center mb-10">
+        <div className="mb-10 text-center">
           <h2
             style={{
               fontFamily: '"Cormorant Garamond", serif',
@@ -403,22 +415,15 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
           >
             A Universe for Creators
           </h2>
-          <p
-            className="mt-3 text-sm"
-            style={{ color: "var(--text-muted)" }}
-          >
-            Everything you need to write, publish, and share your voice with the world.
+          <p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>
+            Nine rooms, one world — each one built around a part of the writing life.
           </p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {FEATURES.map(({ icon: Icon, title, desc }) => (
             <div
               key={title}
-              className="rounded-2xl p-6 transition-all hover:scale-[1.015]"
-              style={{
-                backgroundColor: "var(--surface)",
-                border: "1px solid var(--border)",
-              }}
+              className="ink-card p-6 transition-all hover:scale-[1.015]"
             >
               <div
                 className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl"
@@ -429,10 +434,7 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
               >
                 <Icon size={20} strokeWidth={1.5} />
               </div>
-              <h3
-                className="mb-1.5 text-base font-semibold"
-                style={{ color: "var(--text)" }}
-              >
+              <h3 className="mb-1.5 text-base font-semibold" style={{ color: "var(--text)" }}>
                 {title}
               </h3>
               <p className="text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
@@ -445,7 +447,7 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
 
       {/* Footer CTA */}
       <section
-        className="relative z-10 py-20 text-center border-t"
+        className="relative z-10 border-t py-20 text-center"
         style={{ borderColor: "var(--border)" }}
       >
         <p
@@ -465,15 +467,12 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
           Your story starts here.
         </h2>
         <p
-          className="mt-4 text-sm"
-          style={{ color: "var(--text-muted)", maxWidth: 400, margin: "1rem auto 0" }}
+          className="mt-4 mx-auto text-sm"
+          style={{ color: "var(--text-muted)", maxWidth: 400 }}
         >
-          Free to join. No credit card. Just your voice.
+          Free to join. No credit card. Just your voice, and a room waiting for it.
         </p>
-        <button
-          onClick={() => onNavigate("signup")}
-          className="ink-btn-primary mt-8 group"
-        >
+        <button onClick={() => onNavigate("signup")} className="ink-btn-primary mt-8 group">
           Create your account
           <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
         </button>
