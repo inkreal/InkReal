@@ -16,10 +16,14 @@ import {
   ArrowRight,
   LogOut,
   ChevronRight,
+  Pencil,
+  Share2,
 } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
+import { AvatarUpload } from "@/components/AvatarUpload";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
+import type { ContentType } from "@/components/CreateMenu";
 
 type ScreenId =
   | "home"
@@ -36,95 +40,191 @@ type ScreenId =
 
 interface ScreenProps {
   onNavigate: (id: ScreenId) => void;
+  onCreate?: () => void;
 }
 
-// ---- Home: real feed count from feed_index ----
+// ---- Home: real feed from feed_index with creator profiles ----
+interface FeedEntry {
+  id: string;
+  content_type: string;
+  source_table: string;
+  source_id: string;
+  creator_id: string;
+  created_at: string;
+  like_count: number;
+  comment_count: number;
+  view_count: number;
+  title?: string;
+  creator?: { display_name: string | null; avatar_url: string | null } | null;
+}
+
+async function fetchFeed(limit = 20): Promise<FeedEntry[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from("feed_index")
+    .select("id, content_type, source_table, source_id, creator_id, created_at, like_count, comment_count, view_count, creator:profiles!feed_index_creator_id_fkey(display_name, avatar_url)")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error || !data) return [];
+  const entries = data as unknown as FeedEntry[];
+
+  const postIds = entries.filter((e) => e.source_table === "posts" || e.source_table === "poems").map((e) => e.source_id);
+  const bookIds = entries.filter((e) => e.source_table === "books").map((e) => e.source_id);
+
+  const titleMap = new Map<string, string>();
+  if (postIds.length > 0) {
+    const [posts, poems] = await Promise.all([
+      supabase.from("posts").select("id, title").in("id", postIds),
+      supabase.from("poems").select("id, title").in("id", postIds),
+    ]);
+    (posts.data ?? []).forEach((p: { id: string; title: string }) => titleMap.set(p.id, p.title));
+    (poems.data ?? []).forEach((p: { id: string; title: string }) => titleMap.set(p.id, p.title));
+  }
+  if (bookIds.length > 0) {
+    const { data: books } = await supabase.from("books").select("id, title").in("id", bookIds);
+    (books ?? []).forEach((b: { id: string; title: string }) => titleMap.set(b.id, b.title));
+  }
+
+  return entries.map((e) => ({ ...e, title: titleMap.get(e.source_id) ?? "Untitled" }));
+}
+
+function contentTypeLabel(type: string): string {
+  if (type === "poem") return "Poem";
+  if (type === "book") return "Book";
+  return "Story";
+}
+
+function FeedCard({ item }: { item: FeedEntry }) {
+  const name = item.creator?.display_name ?? "Unknown writer";
+  const monogram = name.charAt(0).toUpperCase();
+  return (
+    <article className="ink-card p-5">
+      <div className="mb-3 flex items-center gap-3">
+        <div
+          className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full text-sm"
+          style={{
+            border: "2px solid var(--accent)",
+            background: item.creator?.avatar_url
+              ? "var(--surface)"
+              : "linear-gradient(135deg, color-mix(in srgb, var(--accent) 80%, var(--bg-elevated)), var(--accent))",
+            color: "var(--bg)",
+            fontFamily: '"Cormorant Garamond", serif',
+            fontWeight: 600,
+            backgroundImage: item.creator?.avatar_url ? `url(${item.creator.avatar_url})` : undefined,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }}
+        >
+          {item.creator?.avatar_url ? "" : monogram}
+        </div>
+        <div className="flex-1">
+          <div className="text-sm font-medium" style={{ color: "var(--text)" }}>
+            {name}
+          </div>
+          <div className="text-xs" style={{ color: "var(--text-faint)" }}>
+            {contentTypeLabel(item.content_type)} · {new Date(item.created_at).toLocaleDateString()}
+          </div>
+        </div>
+      </div>
+      <h3
+        className="text-lg"
+        style={{ color: "var(--text)", fontFamily: '"Cormorant Garamond", serif' }}
+      >
+        {item.title ?? "Untitled"}
+      </h3>
+      <div className="mt-2 flex gap-4 text-xs" style={{ color: "var(--text-faint)" }}>
+        <span>{item.like_count} likes</span>
+        <span>{item.comment_count} comments</span>
+        <span>{item.view_count} views</span>
+      </div>
+    </article>
+  );
+}
+
 function HomeScreen({ onNavigate }: ScreenProps) {
-  const [count, setCount] = useState<number | null>(null);
+  const [items, setItems] = useState<FeedEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!supabase) {
-      setLoading(false);
-      setCount(0);
-      return;
-    }
     (async () => {
-      try {
-        const { count } = await supabase
-          .from("feed_index")
-          .select("id", { count: "exact", head: true });
-        setCount(count ?? 0);
-      } catch {
-        setCount(0);
-      } finally {
-        setLoading(false);
-      }
+      const feed = await fetchFeed();
+      setItems(feed);
+      setLoading(false);
     })();
   }, []);
+
+  if (loading || items.length > 0) {
+    return (
+      <ScreenShell title="Home">
+        {loading ? (
+          <div className="px-6 py-16 text-center" style={{ color: "var(--text-faint)" }}>
+            Loading your feed...
+          </div>
+        ) : (
+          <div className="space-y-4 px-6 py-6">
+            {items.map((item) => (
+              <FeedCard key={item.id} item={item} />
+            ))}
+          </div>
+        )}
+      </ScreenShell>
+    );
+  }
 
   return (
     <ScreenShell title="Home">
       <EmptyState
         icon={Home}
-        title={loading ? "Loading your feed" : "Your feed is quiet for now"}
-        description={
-          loading
-            ? "Fetching the latest from INKREAL..."
-            : count === 0
-              ? "No stories have been published yet. Be the first to put something into the world — your feed will fill as writers share their work."
-              : "Stories are being written. Follow writers to shape what appears here."
-        }
+        title="Your feed is quiet for now"
+        description="No stories have been published yet. Be the first to put something into the world — your feed will fill as writers share their work."
         action={
-          !loading && (
-            <button onClick={() => onNavigate("discover")} className="ink-btn-primary group">
-              Explore Discover
-              <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
-            </button>
-          )
+          <button onClick={() => onNavigate("discover")} className="ink-btn-primary group">
+            Explore Discover
+            <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
+          </button>
         }
       />
     </ScreenShell>
   );
 }
 
-// ---- Discover: real feed count, exploration framing ----
+// ---- Discover: real feed, exploration framing ----
 function DiscoverScreen() {
-  const [count, setCount] = useState<number | null>(null);
+  const [items, setItems] = useState<FeedEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!supabase) {
-      setLoading(false);
-      setCount(0);
-      return;
-    }
     (async () => {
-      try {
-        const { count } = await supabase
-          .from("feed_index")
-          .select("id", { count: "exact", head: true });
-        setCount(count ?? 0);
-      } catch {
-        setCount(0);
-      } finally {
-        setLoading(false);
-      }
+      const feed = await fetchFeed(50);
+      setItems(feed);
+      setLoading(false);
     })();
   }, []);
+
+  if (loading || items.length > 0) {
+    return (
+      <ScreenShell title="Discover">
+        {loading ? (
+          <div className="px-6 py-16 text-center" style={{ color: "var(--text-faint)" }}>
+            Exploring INKREAL...
+          </div>
+        ) : (
+          <div className="space-y-4 px-6 py-6">
+            {items.map((item) => (
+              <FeedCard key={item.id} item={item} />
+            ))}
+          </div>
+        )}
+      </ScreenShell>
+    );
+  }
 
   return (
     <ScreenShell title="Discover">
       <EmptyState
         icon={Compass}
-        title={loading ? "Exploring INKREAL" : "Nothing to discover yet"}
-        description={
-          loading
-            ? "Looking for stories, poems, and books across INKREAL..."
-            : count === 0
-              ? "No published work exists on INKREAL yet. The discover feed will surface posts, poems, and books the moment they go live."
-              : "New work is appearing. Discover surfaces everything published across INKREAL."
-        }
+        title="Nothing to discover yet"
+        description="No published work exists on INKREAL yet. The discover feed will surface posts, poems, and books the moment they go live."
       />
     </ScreenShell>
   );
@@ -277,18 +377,33 @@ function MessagesScreen() {
 }
 
 // ---- Studio ----
-function StudioScreen() {
+function StudioScreen({ studioType }: { studioType: ContentType }) {
   const { isWriter } = useAuth();
+  const labels: Record<ContentType, { title: string; desc: string }> = {
+    poem: {
+      title: "Poem editor",
+      desc: "A dedicated verse editor with line-break awareness and stanza tools arrives in the next update. Your writer role is active — publishing your first poem will also promote you to Writer.",
+    },
+    story: {
+      title: "Story editor",
+      desc: "The long-form narrative editor with draft history and one-tap publish arrives in the next update. Publish your first story to become a Writer automatically.",
+    },
+    post: {
+      title: "Post editor",
+      desc: "A quick-post editor for updates, thoughts, and reflections arrives in the next update. Publishing your first post will promote you to Writer automatically.",
+    },
+    book: {
+      title: "Book manuscript tool",
+      desc: "The full manuscript tool with chapter management, synopsis, and cover upload arrives in the next update. Publishing your first book will promote you to Writer automatically.",
+    },
+  };
+  const copy = labels[studioType];
   return (
-    <ScreenShell title="Studio">
+    <ScreenShell title={copy.title}>
       <EmptyState
         icon={PenTool}
-        title={isWriter ? "Your writing studio" : "Your studio awaits"}
-        description={
-          isWriter
-            ? "The manuscript editor, drafts, and publishing tools are part of a later phase. Your writer role is active."
-            : "The full writing studio — editor, drafts, and one-tap publish — arrives in a later phase. Publish your first piece to become a writer automatically."
-        }
+        title={isWriter ? copy.title : "Coming in the next update"}
+        description={copy.desc}
       />
     </ScreenShell>
   );
@@ -430,7 +545,7 @@ function SettingsScreen({ onNavigate }: ScreenProps) {
 }
 
 // ---- Profile: real counts from the database ----
-function ProfileScreen({ onNavigate }: ScreenProps) {
+function ProfileScreen({ onNavigate, onCreate }: ScreenProps) {
   const { user, profile, isWriter, isFounder, signOut } = useAuth();
   const [postCount, setPostCount] = useState<number | null>(null);
   const [followerCount, setFollowerCount] = useState<number | null>(null);
@@ -490,20 +605,9 @@ function ProfileScreen({ onNavigate }: ScreenProps) {
           </div>
 
           <div className="px-6 pb-6">
-            {/* Monogram avatar */}
-            <div
-              className="-mt-12 mb-4 inline-flex h-24 w-24 items-center justify-center rounded-full text-3xl"
-              style={{
-                border: "4px solid var(--surface)",
-                background:
-                  "linear-gradient(135deg, color-mix(in srgb, var(--accent) 80%, var(--bg-elevated)), var(--accent))",
-                color: "var(--bg)",
-                fontFamily: '"Cormorant Garamond", serif',
-                fontWeight: 600,
-                boxShadow: "0 8px 24px -8px color-mix(in srgb, var(--accent) 50%, transparent)",
-              }}
-            >
-              {monogram}
+            {/* Avatar — uploadable; amber ring; monogram placeholder or uploaded photo */}
+            <div className="-mt-12 mb-4">
+              <AvatarUpload currentUrl={profile?.avatar_url ?? null} monogram={monogram} size={96} />
             </div>
 
             <h2
@@ -538,14 +642,44 @@ function ProfileScreen({ onNavigate }: ScreenProps) {
               </p>
             )}
 
-            {/* Stat row — designed with dividers + serif numerals */}
+            {/* Action row — Edit / Share (Instagram-style) */}
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={() => onNavigate("settings")}
+                className="ink-btn-ghost flex-1"
+              >
+                <Pencil size={15} />
+                Edit profile
+              </button>
+              <button
+                onClick={() => {
+                  if (navigator.share && profile) {
+                    navigator
+                      .share({
+                        title: `${profile.display_name ?? "My INKREAL profile"}`,
+                        text: "Read my work on INKREAL.",
+                        url: window.location.href,
+                      })
+                      .catch(() => {});
+                  } else {
+                    navigator.clipboard?.writeText(window.location.href).catch(() => {});
+                  }
+                }}
+                className="ink-btn-ghost flex-1"
+              >
+                <Share2 size={15} />
+                Share profile
+              </button>
+            </div>
+
+            {/* Stat row — tappable, designed with dividers + serif numerals */}
             <div
               className="mt-6 grid grid-cols-3 overflow-hidden rounded-xl"
               style={{ border: "1px solid var(--border)", backgroundColor: "var(--bg-elevated)" }}
             >
-              <Stat label="Published" value={loading ? null : postCount} />
-              <Stat label="Followers" value={loading ? null : followerCount} divider />
-              <Stat label="Following" value={loading ? null : followingCount} divider />
+              <Stat label="Published" value={loading ? null : postCount} onClick={() => {}} />
+              <Stat label="Followers" value={loading ? null : followerCount} divider onClick={() => {}} />
+              <Stat label="Following" value={loading ? null : followingCount} divider onClick={() => {}} />
             </div>
           </div>
         </div>
@@ -592,7 +726,10 @@ function ProfileScreen({ onNavigate }: ScreenProps) {
           }
           action={
             postCount === 0 && (
-              <button onClick={() => onNavigate("studio")} className="ink-btn-primary group">
+              <button
+                onClick={() => (onCreate ? onCreate() : onNavigate("studio"))}
+                className="ink-btn-primary group"
+              >
                 Start your first piece
                 <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
               </button>
@@ -600,6 +737,20 @@ function ProfileScreen({ onNavigate }: ScreenProps) {
           }
         />
       </div>
+
+      {/* Floating quill FAB — supplementary Create shortcut (Profile only) */}
+      <button
+        onClick={() => (onCreate ? onCreate() : onNavigate("studio"))}
+        className="fixed bottom-24 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full transition-transform active:scale-95 lg:bottom-8 lg:right-8"
+        style={{
+          backgroundColor: "var(--accent)",
+          color: "var(--bg)",
+          boxShadow: "0 12px 32px -8px color-mix(in srgb, var(--accent) 60%, transparent)",
+        }}
+        aria-label="Create a new piece"
+      >
+        <Feather size={22} strokeWidth={1.75} />
+      </button>
     </ScreenShell>
   );
 }
@@ -608,14 +759,18 @@ function Stat({
   label,
   value,
   divider,
+  onClick,
 }: {
   label: string;
   value: number | string | null;
   divider?: boolean;
+  onClick?: () => void;
 }) {
   return (
-    <div
-      className="flex flex-col items-center py-5 text-center"
+    <button
+      onClick={onClick}
+      disabled={!onClick}
+      className="flex flex-col items-center py-4 text-center transition-colors enabled:hover:bg-[color-mix(in_srgb,var(--accent)_8%,transparent)]"
       style={divider ? { borderLeft: "1px solid var(--border)" } : undefined}
     >
       <div
@@ -624,10 +779,10 @@ function Stat({
       >
         {value === null ? "—" : value}
       </div>
-      <div className="mt-1 text-xs tracking-wide" style={{ color: "var(--text-faint)" }}>
+      <div className="mt-0.5 text-[11px] uppercase tracking-wide" style={{ color: "var(--text-faint)" }}>
         {label}
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -647,7 +802,17 @@ function ScreenShell({ title, children }: { title: string; children: ReactNode }
   );
 }
 
-export function ScreenRouter({ screen, onNavigate }: { screen: ScreenId; onNavigate: (id: ScreenId) => void }) {
+export function ScreenRouter({
+  screen,
+  onNavigate,
+  studioType,
+  onCreate,
+}: {
+  screen: ScreenId;
+  onNavigate: (id: ScreenId) => void;
+  studioType?: ContentType;
+  onCreate?: () => void;
+}) {
   switch (screen) {
     case "home":
       return <HomeScreen onNavigate={onNavigate} />;
@@ -662,7 +827,7 @@ export function ScreenRouter({ screen, onNavigate }: { screen: ScreenId; onNavig
     case "messages":
       return <MessagesScreen />;
     case "studio":
-      return <StudioScreen />;
+      return <StudioScreen studioType={studioType ?? "post"} />;
     case "wallet":
       return <WalletScreen />;
     case "notifications":
@@ -670,7 +835,7 @@ export function ScreenRouter({ screen, onNavigate }: { screen: ScreenId; onNavig
     case "settings":
       return <SettingsScreen onNavigate={onNavigate} />;
     case "profile":
-      return <ProfileScreen onNavigate={onNavigate} />;
+      return <ProfileScreen onNavigate={onNavigate} onCreate={onCreate} />;
     default:
       return <HomeScreen onNavigate={onNavigate} />;
   }

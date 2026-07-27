@@ -58,6 +58,130 @@ function ramp(param: AudioParam, ctx: AudioContext, target: number, fadeMs: numb
   param.linearRampToValueAtTime(target, ctx.currentTime + fadeMs / 1000);
 }
 
+/**
+ * Slow melodic/harmonic layer for the "writing mood" tracks (classical, lofi,
+ * night). Plays soft sustained chord tones on sine/triangle oscillators with a
+ * slow attack, changing chords every 15–30s so it never becomes a tight
+ * repeating riff. Mixed quietly beneath the texture layer — an emotional
+ * undertone, not a foreground song. Returns a teardown that stops oscillators
+ * and clears the chord-change timer.
+ */
+function buildMelodicLayer(
+  ctx: AudioContext,
+  dest: AudioNode,
+  mood: "classical" | "lofi" | "night",
+): () => void {
+  // Chord progressions expressed as frequency multipliers from a root.
+  const progressions: Record<"classical" | "lofi" | "night", number[][]> = {
+    classical: [
+      [1, 1.25, 1.5], // I — major
+      [1.5, 1.875, 2.25], // V
+      [0.9, 1.125, 1.35], // vi
+      [1.333, 1.667, 2], // IV
+    ],
+    lofi: [
+      [1, 1.2, 1.5], // minor-ish
+      [1.125, 1.35, 1.6875],
+      [1.5, 1.8, 2.25],
+      [1.333, 1.6, 2],
+    ],
+    night: [
+      [1, 1.2, 1.5], // i (minor)
+      [0.667, 0.8, 1], // VI
+      [0.75, 0.9, 1.125], // III
+      [0.875, 1.05, 1.3125], // VII
+    ],
+  };
+  const roots: Record<"classical" | "lofi" | "night", number> = {
+    classical: 261.63, // C4
+    lofi: 220, // A3
+    night: 196, // G3
+  };
+  // Quiet — sits beneath the texture, never louder than it.
+  const baseGain = 0.04;
+  const progression = progressions[mood];
+  const root = roots[mood];
+  let step = Math.floor(Math.random() * progression.length);
+  let timer: number | undefined;
+  interface ChordNote {
+    osc: OscillatorNode;
+    lfo: OscillatorNode;
+    gain: GainNode;
+  }
+  let live: ChordNote[] = [];
+
+  const playChord = (multipliers: number[]) => {
+    const t = ctx.currentTime;
+    const next: ChordNote[] = [];
+    multipliers.forEach((mult, i) => {
+      const osc = ctx.createOscillator();
+      osc.type = i === 0 ? "sine" : "triangle";
+      osc.frequency.value = root * mult;
+      // Slight detune so the chord breathes rather than feels static.
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 0.05 + i * 0.02;
+      const detuneGain = ctx.createGain();
+      detuneGain.gain.value = 1.5;
+      lfo.connect(detuneGain).connect(osc.frequency);
+      lfo.start(t);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      // Slow attack — gently swells in over ~3s.
+      g.gain.linearRampToValueAtTime(baseGain / (i + 1), t + 3);
+      osc.connect(g).connect(dest);
+      osc.start(t);
+      next.push({ osc, lfo, gain: g });
+    });
+    // Fade out the previous chord over ~3s and stop its nodes.
+    const prev = live;
+    prev.forEach((n) => {
+      ramp(n.gain.gain, ctx, 0, 3000);
+      try {
+        n.osc.stop(t + 3.2);
+      } catch {
+        // already stopped
+      }
+      try {
+        n.lfo.stop(t + 3.2);
+      } catch {
+        // already stopped
+      }
+    });
+    live = next;
+  };
+
+  playChord(progression[step]);
+  const scheduleNext = () => {
+    // 15–30s between chord changes — slow, barely-there movement.
+    const delay = 15000 + Math.random() * 15000;
+    timer = window.setTimeout(() => {
+      step = (step + 1) % progression.length;
+      playChord(progression[step]);
+      scheduleNext();
+    }, delay);
+  };
+  scheduleNext();
+
+  return () => {
+    if (timer) clearTimeout(timer);
+    const t = ctx.currentTime;
+    live.forEach((n) => {
+      ramp(n.gain.gain, ctx, 0, 600);
+      try {
+        n.osc.stop(t + 0.7);
+      } catch {
+        // already stopped
+      }
+      try {
+        n.lfo.stop(t + 0.7);
+      } catch {
+        // already stopped
+      }
+    });
+    live = [];
+  };
+}
+
 /** Build the synth graph for a mood, returning a layer that can stop with a fade. */
 function buildLayer(ctx: AudioContext, mood: Exclude<MoodId, "silence">): ActiveLayer {
   const dest = ctx.createGain();
@@ -290,6 +414,9 @@ function buildLayer(ctx: AudioContext, mood: Exclude<MoodId, "silence">): Active
         if (tickTimer) clearTimeout(tickTimer);
       },
     });
+
+    // Subtle melodic undertone (sits beneath the rain + tick).
+    nodes.push({ stop: buildMelodicLayer(ctx, dest, "night") });
   }
 
   if (mood === "classical") {
@@ -315,6 +442,9 @@ function buildLayer(ctx: AudioContext, mood: Exclude<MoodId, "silence">): Active
       lfo.start();
       nodes.push({ src: lfo });
     });
+
+    // Subtle melodic undertone (sits beneath the drone).
+    nodes.push({ stop: buildMelodicLayer(ctx, dest, "classical") });
   }
 
   if (mood === "lofi") {
@@ -341,6 +471,9 @@ function buildLayer(ctx: AudioContext, mood: Exclude<MoodId, "silence">): Active
     noise.connect(hp).connect(crackleGain).connect(dest);
     noise.start();
     nodes.push({ src: noise });
+
+    // Subtle melodic undertone (sits beneath the crackle).
+    nodes.push({ stop: buildMelodicLayer(ctx, dest, "lofi") });
   }
 
   if (mood === "focus") {

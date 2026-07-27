@@ -15,6 +15,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { CreateMenu, type ContentType } from "@/components/CreateMenu";
 import { useAuth } from "@/context/AuthContext";
 import { ScreenRouter, type ScreenId } from "@/pages/screens";
 
@@ -42,6 +43,8 @@ const DESKTOP_NAV: { id: ScreenId; label: string; icon: typeof Home }[] = [
 
 export function AppShell() {
   const [screen, setScreen] = useState<ScreenId>("home");
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [studioType, setStudioType] = useState<ContentType>("post");
   const { profile, isFounder, isWriter, signOut } = useAuth();
 
   const roleLabel = useMemo(() => {
@@ -51,6 +54,12 @@ export function AppShell() {
   }, [isFounder, isWriter]);
 
   const navigate = (id: ScreenId) => setScreen(id);
+
+  const openCreateMenu = () => setCreateMenuOpen(true);
+  const handleCreateSelect = (type: ContentType) => {
+    setStudioType(type);
+    setScreen("studio");
+  };
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "var(--bg)" }}>
@@ -81,7 +90,7 @@ export function AppShell() {
         {/* Create (quill) CTA */}
         <div className="px-3 pb-3">
           <button
-            onClick={() => navigate("studio")}
+            onClick={openCreateMenu}
             className="ink-btn-primary w-full"
             style={{ backgroundColor: "var(--accent)" }}
           >
@@ -137,9 +146,20 @@ export function AppShell() {
         </header>
 
         <main className="mx-auto max-w-3xl px-0 pb-28 pt-4 lg:px-8 lg:pb-12">
-          <ScreenRouter screen={screen} onNavigate={navigate} />
+          <ScreenRouter
+            screen={screen}
+            onNavigate={navigate}
+            studioType={studioType}
+            onCreate={openCreateMenu}
+          />
         </main>
       </div>
+
+      <CreateMenu
+        open={createMenuOpen}
+        onClose={() => setCreateMenuOpen(false)}
+        onSelect={handleCreateSelect}
+      />
 
       {/* Mobile bottom nav */}
       <nav
@@ -157,7 +177,7 @@ export function AppShell() {
           return (
             <button
               key={id}
-              onClick={() => navigate(id)}
+              onClick={() => (isCreate ? openCreateMenu() : navigate(id))}
               className="relative flex flex-1 flex-col items-center gap-1 py-2.5 transition-colors"
               style={{ color: active ? "var(--accent)" : "var(--text-faint)" }}
               aria-label={label}
