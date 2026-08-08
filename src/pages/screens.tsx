@@ -146,27 +146,41 @@ function HomeScreen({ onNavigate }: ScreenProps) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      const feed = await fetchFeed();
-      setItems(feed);
-      setLoading(false);
+      try {
+        const feed = await fetchFeed();
+        if (!cancelled) {
+          setItems(feed);
+          setLoading(false);
+        }
+      } catch {
+        if (!cancelled) setLoading(false);
+      }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  if (loading || items.length > 0) {
+  if (loading) {
     return (
       <ScreenShell title="Home">
-        {loading ? (
-          <div className="px-6 py-16 text-center" style={{ color: "var(--text-faint)" }}>
-            Loading your feed...
-          </div>
-        ) : (
-          <div className="space-y-4 px-6 py-6">
-            {items.map((item) => (
-              <FeedCard key={item.id} item={item} />
-            ))}
-          </div>
-        )}
+        <div className="px-6 py-16 text-center" style={{ color: "var(--text-faint)" }}>
+          Loading your feed...
+        </div>
+      </ScreenShell>
+    );
+  }
+
+  if (items.length > 0) {
+    return (
+      <ScreenShell title="Home">
+        <div className="space-y-4 px-6 py-6">
+          {items.map((item) => (
+            <FeedCard key={item.id} item={item} />
+          ))}
+        </div>
       </ScreenShell>
     );
   }
@@ -194,27 +208,41 @@ function DiscoverScreen() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      const feed = await fetchFeed(50);
-      setItems(feed);
-      setLoading(false);
+      try {
+        const feed = await fetchFeed(50);
+        if (!cancelled) {
+          setItems(feed);
+          setLoading(false);
+        }
+      } catch {
+        if (!cancelled) setLoading(false);
+      }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  if (loading || items.length > 0) {
+  if (loading) {
     return (
       <ScreenShell title="Discover">
-        {loading ? (
-          <div className="px-6 py-16 text-center" style={{ color: "var(--text-faint)" }}>
-            Exploring INKREAL...
-          </div>
-        ) : (
-          <div className="space-y-4 px-6 py-6">
-            {items.map((item) => (
-              <FeedCard key={item.id} item={item} />
-            ))}
-          </div>
-        )}
+        <div className="px-6 py-16 text-center" style={{ color: "var(--text-faint)" }}>
+          Exploring INKREAL...
+        </div>
+      </ScreenShell>
+    );
+  }
+
+  if (items.length > 0) {
+    return (
+      <ScreenShell title="Discover">
+        <div className="space-y-4 px-6 py-6">
+          {items.map((item) => (
+            <FeedCard key={item.id} item={item} />
+          ))}
+        </div>
       </ScreenShell>
     );
   }
